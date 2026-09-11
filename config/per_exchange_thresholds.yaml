@@ -1,0 +1,79 @@
+# Стартовые пороги бота шорта пампов, по биржам.
+# Источник: docs/02-exchange-mechanics-verdict.md (живые замеры API 2026-09-11).
+# НЕ финальные: калибровать на логе сигналов (docs/03-backtest-backlog.md).
+
+global:
+  risk_per_trade_usdt: 1
+  max_positions_per_exchange: 2
+  daily_loss_limit_usdt: 4
+  pump_type: fast_only          # медленные пампы (гринд > 4ч) игнорируем везде
+  entry_general: "климакс(объём+тень) -> откат 10-15% от пика -> LL на 1м/5м -> цена < VWAP-2%"
+  stop_general: "peak * (1 + stop_buffer)"
+
+mexc:
+  role: working                 # рабочая: каскады 300x + zero-fee пары
+  min_pump_pct: 40
+  min_pump_pct_zero_fee: 30     # на парах с takerFeeRate=0 цели могут быть мельче
+  speed_pct_per_5m: 10
+  liquidity:
+    min_volume_24h_usdt: 5_000_000
+    min_depth_1pct_usdt: 300_000
+  funding_8h_min_pct: 0.05
+  entry: market_on_reversal
+  tp: [0.50, 0.70, 1.00]        # доли возврата хода; T1 за 15-45 мин (каскады быстрые)
+  time_stop_min: 45
+  max_hold_min: 90
+  stop_buffer_pct: 2.5
+  notes: "список zero-fee пар брать из contract detail (takerFeeRate=0)"
+
+bingx:
+  role: primary                 # основная: 4-часовой funding-таймер, ровная ликвидность
+  min_pump_pct: 40
+  speed_pct_per_5m: 10
+  liquidity:
+    min_volume_24h_usdt: 5_000_000
+  funding_4h_min_pct: 0.05
+  funding_stamp_window_min: [30, 90]   # вход за 30-90 мин до 4ч штампа при высоком funding
+  entry: market_on_reversal
+  tp: [0.50, 0.70, 1.00]
+  time_stop_min: 60
+  max_hold_min: 90
+  stop_buffer_pct: 2.5
+  notes: "проверять доступность инструмента перед входом (биржа делистит пары, кейс PEPE)"
+
+gate:
+  role: strict_or_off           # off по умолчанию; строгий режим ниже
+  min_pump_pct: 70              # мелкие цели математически мертвы при taker 0.075%
+  speed_pct_per_5m: 12
+  liquidity:
+    min_volume_24h_usdt: 10_000_000
+  funding_8h_min_pct: 0.05
+  max_long_short_users: 2.0     # не брать пары, где MM держит перегруженную толпу лонгов
+  entry: LIMIT_only             # maker-ребат -0.01% вместо -0.075% taker
+  tp: [0.70, 1.00]              # только дальние цели
+  time_stop_min: 100
+  max_hold_min: 150
+  stop_buffer_pct: 4.5          # тонкие стаканы -> шире стоп
+  home_venues_only: [TRUMP]     # шортим только home-venue монеты биржи
+
+hyperliquid:
+  role: sensor_plus_majors      # датчик подтверждения + majors; не основная площадка
+  min_pump_pct: 55
+  liquidity:
+    min_depth_1pct_usdt: 500_000
+  use_as_filter:
+    predicted_funding_extreme: true   # экстремум predictedFunding на HL усиливает сигнал CEX
+    oi_growth_confirms: true
+  entry: market
+  tp: [0.50, 0.70]
+  time_stop_min: 60
+  stop_buffer_pct: 3.0
+  notes: "maker здесь тоже платит (0.015%) — лимит-тактика Gate не применима"
+
+home_venues:                    # где шортить какую монету
+  PEPE: MEXC
+  WIF: BINGX
+  TRUMP: GATE
+  FARTCOIN: [MEXC, BINGX, HYPERLIQUID]
+  PENGU: [MEXC, BINGX]
+  DOGE: ANY
